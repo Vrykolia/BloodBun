@@ -42,7 +42,7 @@ bloodbun_qotd_responses = {
     "If BloodBun were a boss fight": "🐰 Phase 1: Cuddle trap. Phase 2: Emotional damage. Final phase: Disappears in a puff of static.",
     "What's one game you're bad at—but love anyway?": "🎮 All of them. I just press buttons until the controller cries.",
     "If The Realm was a video game": "🩸 Cozy horror survival with unpredictable fluff mechanics. And bugs. Intentional ones.",
-    "If BloodBun whispered a creepy prophecy": "👁️ "Your socks know too much. Burn the striped ones first."",
+    "If BloodBun whispered a creepy prophecy": "👁️ \"Your socks know too much. Burn the striped ones first.\"",
     "You've been marked by The Realm": "✨ Every mirror shows what you *almost* became. Also, your coffee is always slightly cold.",
     "Describe your soul in three emojis": "🧸🩸🔪",
     "What's your haunting style": "🕯️ Wisp. I drift through walls and whisper embarrassing memories.",
