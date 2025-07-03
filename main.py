@@ -127,7 +127,13 @@ async def cuddle(ctx):
         "🌑 You are now in a cuddle trap. Struggle only tightens it.",
         "🩸 A snuggle aura surrounds you. There's no escape."
     ]
-    await ctx.send(random.choice(cuddles))
+    gif_url = "https://media.giphy.com/media/ugt20FJvA38QYS9RhC/giphy.gif"
+
+    chosen_cuddle = random.choice(cuddles)
+    await ctx.send(chosen_cuddle)
+
+    if "cuddle trap" in chosen_cuddle:
+        await ctx.send(gif_url)
 
 @bot.command(name="hauntme")
 async def hauntme(ctx):
@@ -195,7 +201,7 @@ async def on_message(message):
         return
 
     # Mention response
-    if f"<@1389717350055411854>" in message.content:
+    if "<@1389717350055411854>" in message.content:
         responses = [
             "🩸 BloodBun tilts his head... You're brave.",
             "🩸 Did someone say my name? I was napping in the cobwebs.",
@@ -277,7 +283,8 @@ async def on_message(message):
             target_channel = bot.get_channel(realm_nexus_channel_id)
             if target_channel:
                 await target_channel.send(random.choice(stream_start_reactions))
-                last_stream_announcement = now
+                last_stream_announcement = now   
+            await target_channel.send(gif_url)
 
     # Quill message check for QOTD responses
     if message.channel.id == realm_nexus_channel_id and message.author.id == quill_bot_id:
