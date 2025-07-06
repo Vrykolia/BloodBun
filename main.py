@@ -20,7 +20,7 @@ intents.members = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-
+    
 # XP settings
 MIN_XP = 15
 MAX_XP = 25
@@ -196,7 +196,11 @@ async def leaderboard(ctx):
         await ctx.send("🌌 No one has earned XP yet!")
         return
 
-    sorted_users = sorted(data.items(), key=lambda x: x[1]["xp"], reverse=True)[:10]
+    sorted_users = sorted(
+        data.items(),
+        key=lambda x: (x[1]["level"], x[1]["xp"]),
+        reverse=True
+    )[:10]
 
     leaderboard_text = "🏆 **The Realm's Top Dwellers**\n"
     for i, (user_id, user_data) in enumerate(sorted_users, 1):
@@ -450,6 +454,7 @@ last_stream_announcement = 0
 stream_cooldown = 300
 
 @bot.event
+
 async def on_message(message):
     global last_stream_announcement
 
