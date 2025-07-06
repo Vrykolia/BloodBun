@@ -9,6 +9,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
+from waitress import serve
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -69,7 +70,7 @@ def home():
 
 def run():
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    serve(app, host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
