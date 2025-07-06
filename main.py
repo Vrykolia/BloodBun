@@ -207,8 +207,6 @@ if not TOKEN:
     exit(1)
 
 TOKEN = TOKEN.strip()  # Remove any whitespace
-if not TOKEN.startswith(('Bot ', 'bot ')):
-    logger.warning("Discord token should start with 'Bot ' - this may cause issues")
 if len(TOKEN) < 50:
     logger.error("Discord token appears to be too short - please check your token")
     exit(1)
