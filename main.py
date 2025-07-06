@@ -585,6 +585,5 @@ async def on_ready():
     print(f"🟢 BloodBun is online as {bot.user} [from Render]")
 
 if __name__ == "__main__":
-    keep_alive()  # Starts the Flask server in a separate thread
-
-    bot.run(TOKEN)  # Starts the Discord bot
+    keep_alive()
+    bot.run(TOKEN)
