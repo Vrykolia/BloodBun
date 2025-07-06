@@ -1,7 +1,6 @@
 
 import os
 import random
-import time
 import asyncio
 import logging
 import discord
@@ -16,7 +15,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-TOKEN = os.environ["DISCORD_TOKEN"]
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
+    logger.error("DISCORD_TOKEN environment variable not found!")
+    exit(1)
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -304,7 +306,7 @@ async def on_message(message):
 
     try:
         # Mention response
-        if "<@1389717350055411854>" in message.content:
+        if bot.user.mentioned_in(message):
             responses = [
                 "🩸 BloodBun tilts his head... You're brave.",
                 "🩸 Did someone say my name? I was napping in the cobwebs.",
@@ -455,10 +457,4 @@ async def on_message(message):
     await bot.process_commands(message)
 
 keep_alive()
-
-from waitress import serve
-
-port = int(os.environ.get("PORT", 8080))
-serve(app, host="0.0.0.0", port=port)
-
 bot.run(TOKEN)
