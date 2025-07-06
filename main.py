@@ -580,6 +580,11 @@ if not TOKEN:
     print("❌ DISCORD_TOKEN not found in environment!")
     exit(1)
 
+@bot.event
+async def on_ready():
+    print(f"🟢 BloodBun is online as {bot.user} [from Render]")
+
 if __name__ == "__main__":
     keep_alive()  # Starts the Flask server in a separate thread
+
     bot.run(TOKEN)  # Starts the Discord bot
