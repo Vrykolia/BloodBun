@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import os
 import random
 import time
@@ -8,7 +7,6 @@ from threading import Thread
 from typing import Optional
 import discord
 from discord.ext import commands
-from dotenv import load_dotenv
 from flask import Flask
 from waitress import serve
 from discord import TextChannel
@@ -194,12 +192,10 @@ async def choose_path(ctx, path: Optional[str] = None):
 
 @bot.command(name="leaderboard")
 async def leaderboard(ctx):
-        print(f"🏆 Leaderboard command triggered by {ctx.author}")
         data = load_data()
         if not data:
             await ctx.send("🌌 No one has earned XP yet!")
             return
-
         sorted_users = sorted(
             data.items(),
             key=lambda x: (-int(x[1].get("level", 0)), -int(x[1].get("xp", 0)))
@@ -559,22 +555,13 @@ def run():
 def keep_alive():
     t = Thread(target=run)
     t.start()
-
-# Start the bot
-logging.basicConfig(level=logging.INFO)
-load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-
-if not TOKEN:
-    print("❌ DISCORD_TOKEN not found in environment!")
-    exit(1)
-
-@bot.event
-async def on_ready():
-    print(f"🟢 BloodBun is online as {bot.user} [from Render]")
 
 if __name__ == "__main__":
     keep_alive()
     print("🚀 Starting BloodBun bot...")
 
-bot.run(TOKEN)
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("❌ DISCORD_TOKEN is not set. Bot cannot start.")
