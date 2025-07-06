@@ -586,4 +586,6 @@ async def on_ready():
 
 if __name__ == "__main__":
     keep_alive()
+    print("🚀 Starting BloodBun bot...")
+
     bot.run(TOKEN)
