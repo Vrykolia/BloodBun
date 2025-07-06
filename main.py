@@ -10,8 +10,6 @@ from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 from waitress import serve
-import discord
-from discord.ext import commands
 import json
 import os
 
@@ -133,69 +131,93 @@ def save_data(data):
     with open("users.json", "w") as f:
         json.dump(data, f, indent=4)
 
-# XP tracking
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    user_id = str(message.author.id)
-    now = time.time()
-
-    if user_id in cooldowns and now - cooldowns[user_id] < XP_COOLDOWN:
-        await bot.process_commands(message)
-        return
-
-    cooldowns[user_id] = now
-
+# XP Commands
+@bot.command(name="stats")
+async def check_stats(ctx):
+    """Check your XP and level stats"""
+    user_id = str(ctx.author.id)
     data = load_data()
+    
     if user_id not in data:
-        data[user_id] = {"xp": 0, "level": 0}
+        await safe_send_message(ctx, "🌌 You haven't earned any XP yet. Start chatting to gain experience!")
+        return
+    
+    user_data = data[user_id]
+    xp = user_data["xp"]
+    level = user_data["level"]
+    
+    next_level = level + 1
+    next_level_xp = xp_table.get(next_level, "MAX")
+    
+    if next_level_xp == "MAX":
+        xp_needed = "You've reached the maximum level!"
+    else:
+        xp_needed = f"{next_level_xp - xp} XP needed for level {next_level}"
+    
+    await safe_send_message(ctx, f"🌟 **{ctx.author.display_name}'s Realm Stats**\n"
+                           f"Level: {level}\n"
+                           f"XP: {xp}\n"
+                           f"Next: {xp_needed}")
 
-    earned_xp = random.randint(MIN_XP, MAX_XP)
-    data[user_id]["xp"] += earned_xp
+@bot.command(name="choose")
+async def choose_path(ctx, path: str = None):
+    """Choose your path at level 20"""
+    if not path:
+        await safe_send_message(ctx, "🌌 Choose your path: `!choose flame` 🔥  |  `!choose ash` 🪶  |  `!choose echo` 🌀")
+        return
+    
+    user_id = str(ctx.author.id)
+    data = load_data()
+    
+    if user_id not in data or data[user_id]["level"] < 20:
+        await safe_send_message(ctx, "🌌 You must reach level 20 before choosing a path.")
+        return
+    
+    path = path.lower()
+    if path not in path_roles:
+        await safe_send_message(ctx, "🌌 Unknown path. Choose: `flame`, `ash`, or `echo`")
+        return
+    
+    # Check if user already has a path role
+    user_roles = [role.name for role in ctx.author.roles]
+    for path_data in path_roles.values():
+        if path_data["role"] in user_roles:
+            await safe_send_message(ctx, "🌌 You have already chosen your path and cannot change it.")
+            return
+    
+    # Add the path role
+    path_info = path_roles[path]
+    role = discord.utils.get(ctx.guild.roles, name=path_info["role"])
+    if role:
+        if await safe_add_role(ctx.author, role):
+            await safe_send_message(ctx, path_info["message"])
+        else:
+            await safe_send_message(ctx, "🌌 Something went wrong while choosing your path.")
+    else:
+        await safe_send_message(ctx, f"🌌 The {path_info['role']} role doesn't exist on this server.")
 
-    xp = data[user_id]["xp"]
-    level = data[user_id]["level"]
-    new_level = get_level_from_xp(xp, xp_table)
-
-    if new_level > level:
-        data[user_id]["level"] = new_level
-        await message.channel.send(f"{message.author.mention} leveled up to {new_level}! 🎉")
-
-        if new_level in level_roles:
-            role_name = level_roles[new_level]
-            role = discord.utils.get(message.guild.roles, name=role_name)
-            if role:
-                await message.author.add_roles(role)
-                msg = level_messages.get(new_level, "")
-                if msg:
-                    await message.channel.send(f"{message.author.mention} {msg}")
-
-        if new_level == 20:
-            await message.channel.send(
-                f"{message.author.mention} 🌌 You have reached Level 20.\n"
-                "The Realm opens before you. Choose your path:\n"
-                "`!choose flame` 🔥  |  `!choose ash` 🪶  |  `!choose echo` 🌀"
-            )
-
-        if new_level in [30, 40, 50, 60, 70, 80, 90]:
-            user_roles = [role.name for role in message.author.roles]
-            for path_key, path_data in path_roles.items():
-                if path_data["role"] in user_roles:
-                    lore_message = path_lore.get(path_key, {}).get(new_level, "")
-                    if lore_message:
-                        await message.channel.send(f"{message.author.mention} {lore_message}")
-                    break
-
-        if new_level == 100:
-            role = discord.utils.get(message.guild.roles, name=final_role)
-            if role:
-                await message.author.add_roles(role)
-                await message.channel.send(f"{message.author.mention} {final_message}")
-
-    save_data(data)
-    await bot.process_commands(message)
+@bot.command(name="leaderboard")
+async def leaderboard(ctx):
+    """Show the top 10 users by XP"""
+    data = load_data()
+    if not data:
+        await safe_send_message(ctx, "🌌 No one has earned XP yet!")
+        return
+    
+    # Sort users by XP
+    sorted_users = sorted(data.items(), key=lambda x: x[1]["xp"], reverse=True)[:10]
+    
+    leaderboard_text = "🏆 **The Realm's Top Dwellers**\n"
+    for i, (user_id, user_data) in enumerate(sorted_users, 1):
+        try:
+            user = bot.get_user(int(user_id))
+            name = user.display_name if user else f"Unknown User"
+        except:
+            name = "Unknown User"
+        
+        leaderboard_text += f"{i}. {name} - Level {user_data['level']} ({user_data['xp']} XP)\n"
+    
+    await safe_send_message(ctx, leaderboard_text)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -488,6 +510,61 @@ async def on_message(message):
         return
 
     try:
+        # XP tracking for non-bot messages
+        if not message.author.bot:
+            user_id = str(message.author.id)
+            now = time.time()
+
+            if user_id not in cooldowns or now - cooldowns[user_id] >= XP_COOLDOWN:
+                cooldowns[user_id] = now
+
+                data = load_data()
+                if user_id not in data:
+                    data[user_id] = {"xp": 0, "level": 0}
+
+                earned_xp = random.randint(MIN_XP, MAX_XP)
+                data[user_id]["xp"] += earned_xp
+
+                xp = data[user_id]["xp"]
+                level = data[user_id]["level"]
+                new_level = get_level_from_xp(xp, xp_table)
+
+                if new_level > level:
+                    data[user_id]["level"] = new_level
+                    await safe_send_message(message.channel, f"{message.author.mention} leveled up to {new_level}! 🎉")
+
+                    if new_level in level_roles:
+                        role_name = level_roles[new_level]
+                        role = discord.utils.get(message.guild.roles, name=role_name)
+                        if role:
+                            await safe_add_role(message.author, role)
+                            msg = level_messages.get(new_level, "")
+                            if msg:
+                                await safe_send_message(message.channel, f"{message.author.mention} {msg}")
+
+                    if new_level == 20:
+                        await safe_send_message(message.channel,
+                            f"{message.author.mention} 🌌 You have reached Level 20.\n"
+                            "The Realm opens before you. Choose your path:\n"
+                            "`!choose flame` 🔥  |  `!choose ash` 🪶  |  `!choose echo` 🌀"
+                        )
+
+                    if new_level in [30, 40, 50, 60, 70, 80, 90]:
+                        user_roles = [role.name for role in message.author.roles]
+                        for path_key, path_data in path_roles.items():
+                            if path_data["role"] in user_roles:
+                                lore_message = path_lore.get(path_key, {}).get(new_level, "")
+                                if lore_message:
+                                    await safe_send_message(message.channel, f"{message.author.mention} {lore_message}")
+                                break
+
+                    if new_level == 100:
+                        role = discord.utils.get(message.guild.roles, name=final_role)
+                        if role:
+                            await safe_add_role(message.author, role)
+                            await safe_send_message(message.channel, f"{message.author.mention} {final_message}")
+
+                save_data(data)
         # Mention response
         if bot.user.mentioned_in(message):
             responses = [
