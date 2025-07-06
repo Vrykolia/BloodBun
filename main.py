@@ -577,4 +577,4 @@ if __name__ == "__main__":
     keep_alive()
     print("🚀 Starting BloodBun bot...")
 
-    bot.run(TOKEN)
+bot.run(TOKEN)
