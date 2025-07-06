@@ -19,6 +19,7 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
 intents.members = True
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -203,6 +204,13 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     logger.error("DISCORD_TOKEN environment variable not found!")
+    exit(1)
+
+TOKEN = TOKEN.strip()  # Remove any whitespace
+if not TOKEN.startswith(('Bot ', 'bot ')):
+    logger.warning("Discord token should start with 'Bot ' - this may cause issues")
+if len(TOKEN) < 50:
+    logger.error("Discord token appears to be too short - please check your token")
     exit(1)
 
 haunted_users = {}
