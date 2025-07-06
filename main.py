@@ -1,4 +1,3 @@
-
 import asyncio
 import json
 import logging
@@ -6,12 +5,13 @@ import os
 import random
 import time
 from threading import Thread
-
+from typing import Optional
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 from flask import Flask
 from waitress import serve
+from discord import TextChannel
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -131,107 +131,155 @@ def save_data(data):
     with open("users.json", "w") as f:
         json.dump(data, f, indent=4)
 
-# XP Commands
 @bot.command(name="stats")
 async def check_stats(ctx):
-    """Check your XP and level stats"""
     user_id = str(ctx.author.id)
     data = load_data()
-    
+
     if user_id not in data:
-        await safe_send_message(ctx, "🌌 You haven't earned any XP yet. Start chatting to gain experience!")
+        await ctx.send("🌌 You haven't earned any XP yet. Start chatting to gain experience!")
         return
-    
+
     user_data = data[user_id]
     xp = user_data["xp"]
     level = user_data["level"]
-    
+
     next_level = level + 1
     next_level_xp = xp_table.get(next_level, "MAX")
-    
+
     if next_level_xp == "MAX":
         xp_needed = "You've reached the maximum level!"
     else:
         xp_needed = f"{next_level_xp - xp} XP needed for level {next_level}"
-    
-    await safe_send_message(ctx, f"🌟 **{ctx.author.display_name}'s Realm Stats**\n"
-                           f"Level: {level}\n"
-                           f"XP: {xp}\n"
-                           f"Next: {xp_needed}")
+
+    await ctx.send(f"🌟 **{ctx.author.display_name}'s Realm Stats**\n"
+                   f"Level: {level}\n"
+                   f"XP: {xp}\n"
+                   f"Next: {xp_needed}")
 
 @bot.command(name="choose")
-async def choose_path(ctx, path: str = None):
-    """Choose your path at level 20"""
+async def choose_path(ctx, path: Optional[str] = None):
     if not path:
-        await safe_send_message(ctx, "🌌 Choose your path: `!choose flame` 🔥  |  `!choose ash` 🪶  |  `!choose echo` 🌀")
+        await ctx.send("🌌 Choose your path: `!choose flame` 🔥  |  `!choose ash` 🪶  |  `!choose echo` 🌀")
         return
-    
+
     user_id = str(ctx.author.id)
     data = load_data()
-    
+
     if user_id not in data or data[user_id]["level"] < 20:
-        await safe_send_message(ctx, "🌌 You must reach level 20 before choosing a path.")
+        await ctx.send("🌌 You must reach level 20 before choosing a path.")
         return
-    
+
     path = path.lower()
     if path not in path_roles:
-        await safe_send_message(ctx, "🌌 Unknown path. Choose: `flame`, `ash`, or `echo`")
+        await ctx.send("🌌 Unknown path. Choose: `flame`, `ash`, or `echo`")
         return
-    
-    # Check if user already has a path role
+
     user_roles = [role.name for role in ctx.author.roles]
     for path_data in path_roles.values():
         if path_data["role"] in user_roles:
-            await safe_send_message(ctx, "🌌 You have already chosen your path and cannot change it.")
+            await ctx.send("🌌 You have already chosen your path and cannot change it.")
             return
-    
-    # Add the path role
+
     path_info = path_roles[path]
     role = discord.utils.get(ctx.guild.roles, name=path_info["role"])
     if role:
-        if await safe_add_role(ctx.author, role):
-            await safe_send_message(ctx, path_info["message"])
-        else:
-            await safe_send_message(ctx, "🌌 Something went wrong while choosing your path.")
+        await ctx.author.add_roles(role)
+        await ctx.send(path_info["message"])
     else:
-        await safe_send_message(ctx, f"🌌 The {path_info['role']} role doesn't exist on this server.")
+        await ctx.send(f"🌌 The {path_info['role']} role doesn't exist on this server.")
 
 @bot.command(name="leaderboard")
 async def leaderboard(ctx):
-    """Show the top 10 users by XP"""
     data = load_data()
     if not data:
-        await safe_send_message(ctx, "🌌 No one has earned XP yet!")
+        await ctx.send("🌌 No one has earned XP yet!")
         return
-    
-    # Sort users by XP
+
     sorted_users = sorted(data.items(), key=lambda x: x[1]["xp"], reverse=True)[:10]
-    
+
     leaderboard_text = "🏆 **The Realm's Top Dwellers**\n"
     for i, (user_id, user_data) in enumerate(sorted_users, 1):
-        try:
-            user = bot.get_user(int(user_id))
-            name = user.display_name if user else f"Unknown User"
-        except:
-            name = "Unknown User"
-        
-        leaderboard_text += f"{i}. {name} - Level {user_data['level']} ({user_data['xp']} XP)\n"
-    
-    await safe_send_message(ctx, leaderboard_text)
+        member = ctx.guild.get_member(int(user_id))
+        name = member.display_name if member else f"User {user_id}"
+        leaderboard_text += f"{i}. {name} — Level {user_data['level']} ({user_data['xp']} XP)\n"
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+    await ctx.send(leaderboard_text)
 
-load_dotenv()
-TOKEN = os.getenv("DISCORD_TOKEN")
-if not TOKEN:
-    logger.error("DISCORD_TOKEN environment variable not found!")
-    exit(1)
+@bot.command(name="realmpath")
+async def realmpath(ctx):
+    user_roles = [role.name for role in ctx.author.roles]
+    current_path = None
 
-TOKEN = TOKEN.strip()  # Remove any whitespace
-if len(TOKEN) < 50:
-    logger.error("Discord token appears to be too short - please check your token")
-    exit(1)
+    for path_key, path_data in path_roles.items():
+        if path_data["role"] in user_roles:
+            current_path = path_key
+            break
+
+    if not current_path:
+        await ctx.send(f"{ctx.author.mention}, you have not chosen a path yet. Reach level 20 and use `!choose`.")
+        return
+
+    data = load_data()
+    user_id = str(ctx.author.id)
+    level = data.get(user_id, {}).get("level", 0)
+
+    next_milestone = next((lvl for lvl in sorted(path_lore[current_path]) if lvl > level), None)
+    if next_milestone:
+        await ctx.send(f"{ctx.author.mention}, you walk the **Path of {path_roles[current_path]['role']}** {path_roles[current_path]['symbol']}\nNext revelation awaits at **Level {next_milestone}**.")
+    else:
+        await ctx.send(f"{ctx.author.mention}, you walk the **Path of {path_roles[current_path]['role']}** {path_roles[current_path]['symbol']}\nYou have received all known revelations. The Realm watches in silence...")
+
+@bot.command(name="resetpath")
+async def resetpath(ctx):
+    user_id = str(ctx.author.id)
+    now = time.time()
+
+    if user_id in reset_cooldowns and now - reset_cooldowns[user_id] < RESET_COOLDOWN_SECONDS:
+        remaining = int(RESET_COOLDOWN_SECONDS - (now - reset_cooldowns[user_id]))
+        hours = remaining // 3600
+        minutes = (remaining % 3600) // 60
+        await ctx.send(f"{ctx.author.mention}, you may only reset your path once every 24 hours.\nTry again in **{hours}h {minutes}m**.")
+        return
+
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    await ctx.send(f"{ctx.author.mention}, are you sure you want to abandon your path? Type `yes` to confirm.")
+
+    try:
+        msg = await bot.wait_for("message", check=check, timeout=30)
+        if msg.content.lower() == "yes":
+            removed = False
+            for path_data in path_roles.values():
+                role = discord.utils.get(ctx.guild.roles, name=path_data["role"])
+                if role in ctx.author.roles:
+                    await ctx.author.remove_roles(role)
+                    removed = True
+            if removed:
+                reset_cooldowns[user_id] = now
+                await ctx.send(f"{ctx.author.mention}, your path has been severed. The Realm forgets... for now.")
+            else:
+                await ctx.send("You are not bound to any path.")
+        else:
+            await ctx.send("Path reset cancelled.")
+    except asyncio.TimeoutError:
+        await ctx.send("No response. Path reset cancelled.")
+
+@bot.command(name="realmhelp")
+async def realmhelp(ctx):
+    embed = discord.Embed(
+        title="📖 Realmbound Commands",
+        description="The Realm whispers guidance to those who listen...",
+        color=discord.Color.dark_purple()
+    )
+    embed.add_field(name="!stats", value="Check your level and XP.", inline=False)
+    embed.add_field(name="!leaderboard", value="See the top Realmbound souls.", inline=False)
+    embed.add_field(name="!choose [flame|ash|echo]", value="Choose your path at level 20.", inline=False)
+    embed.add_field(name="!realmpath", value="View your current path and next lore milestone.", inline=False)
+    embed.add_field(name="!resetpath", value="Abandon your current path (once every 24h).", inline=False)
+    embed.set_footer(text="The Realm remembers those who remain.")
+    await ctx.send(embed=embed)
 
 haunted_users = {}
 collected_whispers = {}
@@ -243,133 +291,120 @@ all_whispers = [
     "🩸 If you close your eyes, I'll speak louder."
 ]
 
-# Global config for stream detection
-realm_news_channel_id = 1377172856160649246  # Carl's ping location
-realm_nexus_channel_id = 1378882771061051442  # BloodBun's response location
-carl_bot_id = 235148962103951360  # Carl-bot's user ID
-quill_bot_id = 713586207119900693  # Quill's actual bot user ID
-
-# Cooldown tracking
-last_stream_announcement = 0
-stream_cooldown = 300  # 5 minutes
-
-# BloodBun QOTD Response Map
-bloodbun_qotd_responses = {
-    "If BloodBun were a boss fight": "🐰 Phase 1: Cuddle trap. Phase 2: Emotional damage. Final phase: Disappears in a puff of static.",
-    "What's one game you're bad at—but love anyway?": "🎮 All of them. I just press buttons until the controller cries.",
-    "If The Realm was a video game": "🩸 Cozy horror survival with unpredictable fluff mechanics. And bugs. Intentional ones.",
-    "If BloodBun whispered a creepy prophecy": "👁️ \"Your socks know too much. Burn the striped ones first.\"",
-    "You've been marked by The Realm": "✨ Every mirror shows what you *almost* became. Also, your coffee is always slightly cold.",
-    "Describe your soul in three emojis": "🧸🩸🔪",
-    "What's your haunting style": "🕯️ Wisp. I drift through walls and whisper embarrassing memories.",
-    "What book would you haunt": "📖 A cookbook. I like whispering bad substitutions during soufflés.",
-    "You find a cursed journal": "✍️ \"Page intentionally left blank. The screaming starts on page 2.\"",
-    "What snack would instantly restore your HP": "🍓 Shadowberry Pop-Tarts. Cursed but toasty.",
-    "What's your comfort food when the shadows get too loud?": "🍲 Bone broth. No questions.",
-    "What treat would you offer a ghost": "🍪 One (1) perfectly salted cookie. Still warm. Bribes matter."
-}
-
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "BloodBun is lurking..."
-
-def run():
-    port = int(os.environ.get("PORT", 8080))
-    serve(app, host='0.0.0.0', port=port)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-    
-async def safe_send_message(destination, content):
-    """Safely send a message with error handling"""
-    try:
-        await destination.send(content)
-        return True
-    except discord.Forbidden:
-        logger.warning(f"No permission to send message to {destination}")
-        return False
-    except discord.HTTPException as e:
-        logger.error(f"HTTP error sending message: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"Unexpected error sending message: {e}")
-        return False
-
-async def safe_add_role(member, role):
-    """Safely add a role with error handling"""
-    try:
-        if role not in member.roles:
-            await member.add_roles(role)
-            return True
-        return False
-    except discord.Forbidden:
-        logger.warning(f"No permission to add role {role.name} to {member.display_name}")
-        return False
-    except discord.HTTPException as e:
-        logger.error(f"HTTP error adding role: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"Unexpected error adding role: {e}")
-        return False
-
-async def safe_add_reactions(message, reactions):
-    """Safely add reactions with error handling"""
-    try:
-        for reaction in reactions:
-            await message.add_reaction(reaction)
-            await asyncio.sleep(0.25)  # Rate limit protection
-    except discord.Forbidden:
-        logger.warning("No permission to add reactions")
-    except discord.HTTPException as e:
-        logger.error(f"HTTP error adding reactions: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error adding reactions: {e}")
-
-@bot.event
-async def on_ready():
-    print(f"🩸 BloodBun has awakened as {bot.user}!")
-    logger.info(f"Bot connected as {bot.user}")
-
-@bot.event
-async def on_error(event, *args, **kwargs):
-    logger.error(f"Error in event {event}: {args}, {kwargs}")
-
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        return  # Ignore unknown commands
-    elif isinstance(error, commands.MissingPermissions):
-        await safe_send_message(ctx, "🩸 BloodBun lacks the power to perform that action...")
-    elif isinstance(error, commands.BotMissingPermissions):
-        await safe_send_message(ctx, "🩸 The shadows prevent me from doing that...")
+@bot.command(name="hauntme")
+async def hauntme(ctx):
+    user_id = str(ctx.author.id)
+    if user_id not in haunted_users:
+        haunted_users[user_id] = []
+        try:
+            await ctx.author.send("🩸 You've invited BloodBun into your DMs... Sweet dreams.")
+        except discord.Forbidden:
+            await ctx.send("🩸 Your DMs are locked... BloodBun will haunt you here instead.")
     else:
-        logger.error(f"Command error in {ctx.command}: {error}")
-        await safe_send_message(ctx, "🩸 Something went wrong in the void...")
+        try:
+            await ctx.author.send("🩸 You are already haunted.")
+        except discord.Forbidden:
+            await ctx.send("🩸 You are already haunted.")
+
+@bot.command(name="unhauntme")
+async def unhauntme(ctx):
+    user_id = str(ctx.author.id)
+    if user_id in haunted_users:
+        del haunted_users[user_id]
+        try:
+            await ctx.author.send("🩸 You've pulled the covers up... for now.")
+        except discord.Forbidden:
+            await ctx.send("🩸 You've pulled the covers up... for now.")
+    else:
+        try:
+            await ctx.author.send("🩸 You were never haunted to begin with. Curious.")
+        except discord.Forbidden:
+            await ctx.send("🩸 You were never haunted to begin with. Curious.")
+
+@bot.command(name="bloodwhisper")
+async def bloodwhisper(ctx):
+    user_id = str(ctx.author.id)
+    if user_id not in haunted_users:
+        await ctx.send("🩸 You must use `!hauntme` to hear the whispers...")
+        return
+
+    available = [w for w in all_whispers if w not in haunted_users[user_id]]
+    if not available:
+        await ctx.send("🩸 You've heard all there is to hear... for now.")
+        return
+
+    whisper = random.choice(available)
+    haunted_users[user_id].append(whisper)
+
+    try:
+        async with ctx.channel.typing():
+            await ctx.author.send(whisper)
+    except discord.Forbidden:
+        await ctx.send(f"🩸 *whispers in the shadows:* {whisper}")
+
+    if len(haunted_users[user_id]) == len(all_whispers):
+        try:
+            role = discord.utils.get(ctx.guild.roles, name="🐰Collector")
+            if role:
+                member = ctx.guild.get_member(ctx.author.id)
+                if member:
+                    await member.add_roles(role)
+                    await ctx.send(f"✨🩸🐰 {ctx.author.mention} has unlocked all of BloodBun's whispers and become a 🐰Collector!")
+        except Exception as e:
+            print(f"Error awarding Collector role: {e}")
+
+@bot.command(name="hauntstats")
+async def hauntstats(ctx):
+    user_id = str(ctx.author.id)
+    count = len(haunted_users.get(user_id, []))
+    await ctx.send(f"🩸 You've collected {count}/{len(all_whispers)} whispers.")
+
+@bot.command(name="bloodstats")
+async def bloodstats(ctx):
+    user_id = str(ctx.author.id)
+    count = len(haunted_users.get(user_id, []))
+    await ctx.send(f"🩸 BloodBun has whispered to you {count} time(s).")
+
+@bot.command()
+async def hello(ctx):
+    await ctx.send("👋 BloodBun peeks out from the shadows... Hello, squishy.")
+
+@bot.command()
+async def snack(ctx):
+    snacks = [
+        "🩸 BloodBun is nibbling on a shadowberry tart...",
+        "🧃 BloodBun sips suspiciously red juice from a juicebox.",
+        "🍓 A bat-shaped fruit snack vanishes into fluff.",
+        "🍪 He's chewing something crunchy and it's definitely looking back."
+    ]
+    await ctx.send(random.choice(snacks))
+
+@bot.command()
+async def cuddle(ctx):
+    cuddles = [
+        "🧸 BloodBun flops into your lap. Accept the fluff.",
+        "✨ A soft paw reaches for your hand. Trust it.",
+        "🌑 You are now in a cuddle trap. Struggle only tightens it.",
+        "🩸 A snuggle aura surrounds you. There's no escape."
+    ]
+    await ctx.send(random.choice(cuddles))
 
 @bot.command(name="summonbun")
-async def about_bloodbun(ctx):
+async def summonbun(ctx):
     intro = (
         "🧸✨ **About BloodBun** ✨🩸\n"
         "Once a forgotten plush in Drac's nest, BloodBun was stitched to life the moment The Realm awoke.\n"
         "He's cute, he's creepy, and he's a little too aware of where you sleep.\n\n"
         "**Commands you can try:**\n"
-        "`!hauntme` – opt into his creepy whispers.\n"
-        "`!bloodwhisper` – hear what he's thinking.\n"
-        "`!hauntstats` – check how many whispers you've unlocked.\n"
-        "`!bloodstats` – see how often you've summoned him.\n"
-        "`!unhauntme` – back out (for now...)\n"
-        "`!snack`, `!cuddle`, `!hello` – because fluff is power!\n"
-        "`!lore` to hear my secrets... if I'm awake.\n\n"
+        "`!hauntme`, `!bloodwhisper`, `!hauntstats`, `!bloodstats`, `!unhauntme`\n"
+        "`!snack`, `!cuddle`, `!hello`, `!lore`, `!summonbun`\n"
+        "`!stats`, `!choose`, `!realmpath`, `!resetpath`, `!leaderboard`, `!realmhelp`\n\n"
         "Collect all whispers and earn the 🐰Collector role.\n"
-        "Be careful what you cuddle...\n\n"
         "*P.S. I only answer when I'm online. Otherwise? I vanish like socks in the laundry.*"
     )
-    await safe_send_message(ctx, intro)
+    await ctx.send(intro)
 
-@bot.command(name='lore')
+@bot.command(name="lore")
 async def lore(ctx):
     lores = [
         "🌙 Vrykolia was born beneath a blood moon, wrapped in stormlight and lavender.",
@@ -388,333 +423,144 @@ async def lore(ctx):
         "🛏️ If you fall asleep in The Realm with your earbuds in, BloodBun might remix your dreams.",
         "📜 There are 13 rules in The Realm. BloodBun ignores 12 of them and *enforces* the last one with extreme prejudice.",
     ]
-    response = random.choice(lores)
-    await safe_send_message(ctx, response)
+    await ctx.send(random.choice(lores))
 
-@bot.command()
-async def hello(ctx):
-    await safe_send_message(ctx, "👋 BloodBun peeks out from the shadows... Hello, squishy.")
+# QOTD responses
+bloodbun_qotd_responses = {
+    "If BloodBun were a boss fight": "🐰 Phase 1: Cuddle trap. Phase 2: Emotional damage. Final phase: Disappears in a puff of static.",
+    "What's one game you're bad at—but love anyway?": "🎮 All of them. I just press buttons until the controller cries.",
+    "If The Realm was a video game": "🩸 Cozy horror survival with unpredictable fluff mechanics. And bugs. Intentional ones.",
+    "If BloodBun whispered a creepy prophecy": "👁️ \"Your socks know too much. Burn the striped ones first.\"",
+    "You've been marked by The Realm": "✨ Every mirror shows what you *almost* became. Also, your coffee is always slightly cold.",
+    "Describe your soul in three emojis": "🧸🩸🔪",
+    "What's your haunting style": "🕯️ Wisp. I drift through walls and whisper embarrassing memories.",
+    "What book would you haunt": "📖 A cookbook. I like whispering bad substitutions during soufflés.",
+    "You find a cursed journal": "✍️ \"Page intentionally left blank. The screaming starts on page 2.\"",
+    "What snack would instantly restore your HP": "🍓 Shadowberry Pop-Tarts. Cursed but toasty.",
+    "What's your comfort food when the shadows get too loud?": "🍲 Bone broth. No questions.",
+    "What treat would you offer a ghost": "🍪 One (1) perfectly salted cookie. Still warm. Bribes matter."
+}
 
-@bot.command()
-async def snack(ctx):
-    snacks = [
-        "🩸 BloodBun is nibbling on a shadowberry tart...",
-        "🧃 BloodBun sips suspiciously red juice from a juicebox.",
-        "🍓 A bat-shaped fruit snack vanishes into fluff.",
-        "🍪 He's chewing something crunchy and it's definitely looking back."
-    ]
-    gif_url = "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExcTh1N3k5bm5iMnNqNHptbGFrcmFub2h0Nm1yMHR2eDdocGt2Y3J5NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/DhKhBbHPlrTr9TFCZS/giphy.gif"
-
-    chosen_snack = random.choice(snacks)
-    await safe_send_message(ctx, chosen_snack)
-
-    if "juicebox" in chosen_snack:
-        await safe_send_message(ctx, gif_url)
-
-@bot.command()
-async def cuddle(ctx):
-    cuddles = [
-        "🧸 BloodBun flops into your lap. Accept the fluff.",
-        "✨ A soft paw reaches for your hand. Trust it.",
-        "🌑 You are now in a cuddle trap. Struggle only tightens it.",
-        "🩸 A snuggle aura surrounds you. There's no escape."
-    ]
-    gif_url = "https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmN0eGk5ejcwcnR4dmJyODI4cXgzMGhhcGVoc2g5b2l5bDByZXN2ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/ugt20FJvA38QYS9RhC/giphy.gif"
-
-    chosen_cuddle = random.choice(cuddles)
-    await safe_send_message(ctx, chosen_cuddle)
-
-    if "cuddle trap" in chosen_cuddle:
-        await safe_send_message(ctx, gif_url)
-
-@bot.command(name="hauntme")
-async def hauntme(ctx):
-    user_id = str(ctx.author.id)
-    if user_id not in haunted_users:
-        haunted_users[user_id] = []
-        try:
-            await ctx.author.send("🩸 You've invited BloodBun into your DMs... Sweet dreams.")
-        except discord.Forbidden:
-            await safe_send_message(ctx, "🩸 Your DMs are locked... BloodBun will haunt you here instead.")
-    else:
-        try:
-            await ctx.author.send("🩸 You are already haunted.")
-        except discord.Forbidden:
-            await safe_send_message(ctx, "🩸 You are already haunted.")
-
-@bot.command(name="unhauntme")
-async def unhauntme(ctx):
-    user_id = str(ctx.author.id)
-    if user_id in haunted_users:
-        del haunted_users[user_id]
-        try:
-            await ctx.author.send("🩸 You've pulled the covers up... for now.")
-        except discord.Forbidden:
-            await safe_send_message(ctx, "🩸 You've pulled the covers up... for now.")
-    else:
-        try:
-            await ctx.author.send("🩸 You were never haunted to begin with. Curious.")
-        except discord.Forbidden:
-            await safe_send_message(ctx, "🩸 You were never haunted to begin with. Curious.")
-
-@bot.command(name="bloodwhisper")
-async def bloodwhisper(ctx):
-    user_id = str(ctx.author.id)
-    if user_id not in haunted_users:
-        await safe_send_message(ctx, "🩸 You must use `!hauntme` to hear the whispers...")
-        return
-
-    available = [w for w in all_whispers if w not in haunted_users[user_id]]
-    if not available:
-        await safe_send_message(ctx, "🩸 You've heard all there is to hear... for now.")
-        return
-
-    whisper = random.choice(available)
-    haunted_users[user_id].append(whisper)
-
-    try:
-        async with ctx.channel.typing():
-            await ctx.author.send(whisper)
-    except discord.Forbidden:
-        await safe_send_message(ctx, f"🩸 *whispers in the shadows:* {whisper}")
-
-    if len(haunted_users[user_id]) == len(all_whispers):
-        try:
-            role = discord.utils.get(ctx.guild.roles, name="🐰Collector")
-            if role:
-                member = ctx.guild.get_member(ctx.author.id)
-                if member and await safe_add_role(member, role):
-                    channel = discord.utils.get(ctx.guild.text_channels, name="🩸realm-nexus🩸")
-                    if channel:
-                        await safe_send_message(channel, f"✨🩸🐰 {ctx.author.mention} has unlocked all of BloodBun's whispers and become a 🐰Collector!")
-        except Exception as e:
-            logger.error(f"Error awarding Collector role: {e}")
-
-@bot.command(name="hauntstats")
-async def hauntstats(ctx):
-    user_id = str(ctx.author.id)
-    count = len(haunted_users.get(user_id, []))
-    await safe_send_message(ctx, f"🩸 You've collected {count}/{len(all_whispers)} whispers.")
-
-@bot.command(name="bloodstats")
-async def bloodstats(ctx):
-    user_id = str(ctx.author.id)
-    count = len(haunted_users.get(user_id, []))
-    await safe_send_message(ctx, f"🩸 BloodBun has whispered to you {count} time(s).")
+# Stream detection and keyword triggers
+realm_news_channel_id = 1377172856160649246
+realm_nexus_channel_id = 1378882771061051442
+carl_bot_id = 235148962103951360
+quill_bot_id = 713586207119900693
+last_stream_announcement = 0
+stream_cooldown = 300
 
 @bot.event
 async def on_message(message):
     global last_stream_announcement
-    
+
     if message.author == bot.user:
         return
 
-    try:
-        # XP tracking for non-bot messages
-        if not message.author.bot:
-            user_id = str(message.author.id)
-            now = time.time()
-
-            if user_id not in cooldowns or now - cooldowns[user_id] >= XP_COOLDOWN:
-                cooldowns[user_id] = now
-
-                data = load_data()
-                if user_id not in data:
-                    data[user_id] = {"xp": 0, "level": 0}
-
-                earned_xp = random.randint(MIN_XP, MAX_XP)
-                data[user_id]["xp"] += earned_xp
-
-                xp = data[user_id]["xp"]
-                level = data[user_id]["level"]
-                new_level = get_level_from_xp(xp, xp_table)
-
-                if new_level > level:
-                    data[user_id]["level"] = new_level
-                    await safe_send_message(message.channel, f"{message.author.mention} leveled up to {new_level}! 🎉")
-
-                    if new_level in level_roles:
-                        role_name = level_roles[new_level]
-                        role = discord.utils.get(message.guild.roles, name=role_name)
-                        if role:
-                            await safe_add_role(message.author, role)
-                            msg = level_messages.get(new_level, "")
-                            if msg:
-                                await safe_send_message(message.channel, f"{message.author.mention} {msg}")
-
-                    if new_level == 20:
-                        await safe_send_message(message.channel,
-                            f"{message.author.mention} 🌌 You have reached Level 20.\n"
-                            "The Realm opens before you. Choose your path:\n"
-                            "`!choose flame` 🔥  |  `!choose ash` 🪶  |  `!choose echo` 🌀"
-                        )
-
-                    if new_level in [30, 40, 50, 60, 70, 80, 90]:
-                        user_roles = [role.name for role in message.author.roles]
-                        for path_key, path_data in path_roles.items():
-                            if path_data["role"] in user_roles:
-                                lore_message = path_lore.get(path_key, {}).get(new_level, "")
-                                if lore_message:
-                                    await safe_send_message(message.channel, f"{message.author.mention} {lore_message}")
-                                break
-
-                    if new_level == 100:
-                        role = discord.utils.get(message.guild.roles, name=final_role)
-                        if role:
-                            await safe_add_role(message.author, role)
-                            await safe_send_message(message.channel, f"{message.author.mention} {final_message}")
-
-                save_data(data)
-        # Mention response
-        if bot.user.mentioned_in(message):
-            responses = [
-                "🩸 BloodBun tilts his head... You're brave.",
-                "🩸 Did someone say my name? I was napping in the cobwebs.",
-                "🩸 You rang? I brought unsettling energy and a squeaky toy."
-            ]
-
-            if random.randint(1, 10) == 1:
-                responses += [
-                    "🩸 404: response.exe has vanished into the burrow.",
-                    "🩸 [REDACTED] is not to be spoken of here.",
-                    "🩸 I can see your soul's stitching from here.",
-                    "🩸 You've been chosen. Do not resist the fluff.",
-                    "🩸 *BloodBun unflops dramatically.* You rang?"
-                ]
-
-            if random.randint(1, 20) == 1:
-                responses = ["🩸", "👁️🧸👁️", "🦴🩸", "🔪", "🪦", "🍥"]
-
-            await safe_send_message(message.channel, random.choice(responses))
-
-        # Keyword triggers
-        if not message.author.bot:
-            lowered = message.content.lower()
-            keyword_responses = {
-                "vampire": [
-                    "🧛‍♂️ I once tried being a vampire. Too much cleanup.",
-                    "🦇 Fangs are cute. I prefer claws.",
-                    "🩸 Vampires bite. I nibble *psychically*."
-                ],
-                "blood": [
-                    "🩸 Is it yours? Asking for a ritual.",
-                    "🧃 Blood? Juice? Tomato soup? I don't ask anymore.",
-                    "🩸 The blood moon likes me. We're pen pals."
-                ],
-                "game": [
-                    "🎮 If you lose, I get your snacks.",
-                    "🧸 I'm unbeatable at hide-and-squeak.",
-                    "🎲 Want to play a game? It only ends when you scream."
-                ],
-                "snack": [
-                    "🍪 BloodBun drools slightly. It's fine.",
-                    "🩸 I accept offerings in cookie form.",
-                    "🥠 This one has a message: *RUN*."
-                ],
-                "cuddle": [
-                    "🧸 Snuggle activated. Resistance is... adorable.",
-                    "✨ Cuddles increase sanity by 2d4.",
-                    "🌙 Cuddle confirmed. Sleep in peace. Maybe."
-                ],
-                "fluff": [
-                    "🐰 Fluff is power. And static electricity.",
-                    "🩸 Fluffy things bite back.",
-                    "👁️ I'm made of 40% fluff, 60% secrets."
-                ]
-            }
-
-            for keyword, responses in keyword_responses.items():
-                if keyword in lowered:
-                    if random.randint(1, 6) == 1:  # ~16% chance
-                        await safe_send_message(message.channel, random.choice(responses))
-                        break
-
-        # Stream Start Detection from Carl-bot
-        if (
-            message.channel.id == realm_news_channel_id
-            and message.author.id == carl_bot_id
-            and "has entered The Realm!" in message.content
-        ):
-            now = time.time()
-            if now - last_stream_announcement >= stream_cooldown:
-                stream_start_reactions = [
-                    "🩸 *BloodBun perks up.* Vry's back. The shadows are watching.",
-                    "👁️ The Realm opens... BloodBun sharpened his fluff for this.",
-                    "🧸 Twitching ears detected stream energy. *Cuddly chaos incoming.*",
-                    "🎮 Game on. Hope you're not afraid of static... or me.",
-                    '🌕 BloodBun whispers: "It begins again... bring snacks."'
-                ]
-                gif_url = "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExYzFrYW5lOWdvcG1xc2g2MTl1aGwxa2Q5aHEzOWR6M3ZwNTU4M2I3ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/h8REz6z97lJpSKLYdX/giphy.gif"
-                target_channel = bot.get_channel(realm_nexus_channel_id)
-                if target_channel:
-                    last_stream_announcement = now  # Update cooldown before sending
-                    await safe_send_message(target_channel, random.choice(stream_start_reactions))
-                    await safe_send_message(target_channel, gif_url)
-
-        # Quill message check for QOTD responses
-        if message.channel.id == realm_nexus_channel_id and message.author.id == quill_bot_id:
-            matched = False
-            for key_phrase, response in bloodbun_qotd_responses.items():
-                if key_phrase.lower() in message.content.lower():
-                    await safe_send_message(message.channel, response)
-                    matched = True
-                    break
-
-            if not matched:
-                reactions = ["🩸", "👁️", "🧸", "🐰"]
-                await safe_add_reactions(message, reactions)
-
-        # Secret DM whisper on QOTD response
-        if message.channel.id == realm_nexus_channel_id:
-            user_id = str(message.author.id)
-            if user_id in haunted_users and not message.author.bot:
-                available = [w for w in all_whispers if w not in haunted_users[user_id]]
-                if available and random.randint(1, 3) == 1:  # 1 in 3 chance to trigger
-                    whisper = random.choice(available)
-                    haunted_users[user_id].append(whisper)
-
-                    try:
-                        await message.author.send(whisper)
-                    except discord.Forbidden:
-                        logger.info(f"Couldn't DM {message.author.display_name}.")
-                    except Exception as e:
-                        logger.error(f"Error sending DM to {message.author.display_name}: {e}")
-
-                    # Check for Collector role reward
-                    if len(haunted_users[user_id]) == len(all_whispers):
-                        try:
-                            role = discord.utils.get(message.guild.roles, name="🐰Collector")
-                            if role:
-                                member = message.guild.get_member(message.author.id)
-                                if member and await safe_add_role(member, role):
-                                    channel = discord.utils.get(message.guild.text_channels, name="🩸realm-nexus🩸")
-                                    if channel:
-                                        await safe_send_message(channel, f"✨🩸🐰 {message.author.mention} has unlocked all of BloodBun's whispers and become a 🐰Collector!")
-                        except Exception as e:
-                            logger.error(f"Error awarding Collector role: {e}")
-
-        # Random chatter
-        if not message.author.bot:
-            if random.randint(1, 50) == 1:  # Adjust the number for frequency (lower = more often)
-                random_chatter = [
-                    "🩸 The air feels… thicker here.",
-                    "👁️ I saw that. No, not you. The thing *behind* you.",
-                    "🕯️ Sometimes I hum lullabies backwards. The forest sings along.",
-                    "🐾 My paws are cold. That means something's coming.",
-                    "🌑 Your shadow moved before you did.",
-                    "🧸 I blinked. Reality didn't.",
-                    "📣 BloodBun announces: snacks solve 98% of hauntings.",
-                    "🎮 If you lose this round, I win... something.",
-                    "🔮 BloodBun predicts: You'll misplace something important today. And it's already too late.",
-                    "😌 I left a little something in your dreams. You'll see.",
-                    "🍓 Shadowberries taste better when stolen."
-                ]
-                await safe_send_message(message.channel, random.choice(random_chatter))
-
-    except Exception as e:
-        logger.error(f"Error in on_message: {e}")
-
     await bot.process_commands(message)
 
+    # Keyword triggers
+    if not message.author.bot:
+        lowered = message.content.lower()
+        keyword_responses = {
+            "vampire": [
+                "🧛‍♂️ I once tried being a vampire. Too much cleanup.",
+                "🦇 Fangs are cute. I prefer claws.",
+                "🩸 Vampires bite. I nibble *psychically*."
+            ],
+            "blood": [
+                "🩸 Is it yours? Asking for a ritual.",
+                "🧃 Blood? Juice? Tomato soup? I don't ask anymore.",
+                "🩸 The blood moon likes me. We're pen pals."
+            ],
+            "game": [
+                "🎮 If you lose, I get your snacks.",
+                "🧸 I'm unbeatable at hide-and-squeak.",
+                "🎲 Want to play a game? It only ends when you scream."
+            ],
+            "snack": [
+                "🍪 BloodBun drools slightly. It's fine.",
+                "🩸 I accept offerings in cookie form.",
+                "🥠 This one has a message: *RUN*."
+            ],
+            "cuddle": [
+                "🧸 Snuggle activated. Resistance is... adorable.",
+                "✨ Cuddles increase sanity by 2d4.",
+                "🌙 Cuddle confirmed. Sleep in peace. Maybe."
+            ],
+            "fluff": [
+                "🐰 Fluff is power. And static electricity.",
+                "🩸 Fluffy things bite back.",
+                "👁️ I'm made of 40% fluff, 60% secrets."
+            ]
+        }
+
+        for keyword, responses in keyword_responses.items():
+            if keyword in lowered:
+                if random.randint(1, 6) == 1:
+                    await message.channel.send(random.choice(responses))
+                    break
+
+    # Stream start detection
+    if (
+        message.channel.id == realm_news_channel_id
+        and message.author.id == carl_bot_id
+        and "has entered The Realm!" in message.content
+    ):
+        now = time.time()
+        if now - last_stream_announcement >= stream_cooldown:
+            stream_start_reactions = [
+                "🩸 *BloodBun perks up.* Vry's back. The shadows are watching.",
+                "👁️ The Realm opens... BloodBun sharpened his fluff for this.",
+                "🧸 Twitching ears detected stream energy. *Cuddly chaos incoming.*",
+                "🎮 Game on. Hope you're not afraid of static... or me.",
+                '🌕 BloodBun whispers: "It begins again... bring snacks."'
+            ]
+            gif_url = "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExYzFrYW5lOWdvcG1xc2g2MTl1aGwxa2Q5aHEzOWR6M3ZwNTU4M2I3ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/h8REz6z97lJpSKLYdX/giphy.gif"
+            target_channel = bot.get_channel(realm_nexus_channel_id)
+            if isinstance(target_channel, TextChannel):
+                last_stream_announcement = now
+                await target_channel.send(random.choice(stream_start_reactions))
+                await target_channel.send(gif_url)
+
+
+    # QOTD detection
+    if message.channel.id == realm_nexus_channel_id and message.author.id == quill_bot_id:
+        matched = False
+        for key_phrase, response in bloodbun_qotd_responses.items():
+            if key_phrase.lower() in message.content.lower():
+                await message.channel.send(response)
+                matched = True
+                break
+        if not matched:
+            reactions = ["🩸", "👁️", "🧸", "🐰", "🐰"]
+            for emoji in reactions:
+                try:
+                    await message.add_reaction(emoji)
+                except discord.HTTPException:
+                    pass  # Could log this if you want to track failed reactions
+
+# Flask keep-alive server
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "BloodBun is watching..."
+
+def run():
+    serve(app, host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# Start the bot
+logging.basicConfig(level=logging.INFO)
+load_dotenv()
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+if not TOKEN:
+    print("❌ DISCORD_TOKEN not found in environment!")
+    exit(1)
+
 keep_alive()
-bot.run(TOKEN)
+bot.run(TOKEN.strip())
