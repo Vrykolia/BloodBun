@@ -198,8 +198,7 @@ async def leaderboard(ctx):
 
     sorted_users = sorted(
         data.items(),
-        key=lambda x: (x[1]["level"], x[1]["xp"]),
-        reverse=True
+        key=lambda x: (-x[1]["level"], -x[1]["xp"])
     )[:10]
 
     leaderboard_text = "🏆 **The Realm's Top Dwellers**\n"
@@ -209,6 +208,7 @@ async def leaderboard(ctx):
         leaderboard_text += f"{i}. {name} — Level {user_data['level']} ({user_data['xp']} XP)\n"
 
     await ctx.send(leaderboard_text)
+
 
 @bot.command(name="realmpath")
 async def realmpath(ctx):
