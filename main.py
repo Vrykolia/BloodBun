@@ -455,4 +455,9 @@ async def on_message(message):
 
 keep_alive()
 
+from waitress import serve
+
+port = int(os.environ.get("PORT", 8080))
+serve(app, host="0.0.0.0", port=port)
+
 bot.run(TOKEN)
