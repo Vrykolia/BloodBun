@@ -460,9 +460,7 @@ async def on_message(message):
 
     if message.author == bot.user:
         return
-
-    await bot.process_commands(message)
-
+   
     # Keyword triggers
     if not message.author.bot:
         lowered = message.content.lower()
@@ -543,7 +541,8 @@ async def on_message(message):
                     await message.add_reaction(emoji)
                 except discord.HTTPException:
                     pass  # Could log this if you want to track failed reactions
-
+                    
+        await bot.process_commands(message)
 # Flask keep-alive server
 app = Flask('')
 
