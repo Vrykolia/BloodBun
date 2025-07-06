@@ -13,6 +13,8 @@ from flask import Flask
 from waitress import serve
 from discord import TextChannel
 
+print("🧪 BloodBun main.py has started")
+
 command_locks = {}
 COMMAND_COOLDOWN = 3  # seconds
 
@@ -192,18 +194,10 @@ async def choose_path(ctx, path: Optional[str] = None):
     else:
         await ctx.send(f"🌌 The {path_info['role']} role doesn't exist on this server.")
 
-    @bot.command(name="leaderboard")
-    async def leaderboard(ctx):
-        now = time.time()
-        user_id = str(ctx.author.id)
-
-        # 🔐 Check if user is on cooldown
-        if user_id in command_locks and now - command_locks[user_id] < COMMAND_COOLDOWN:
-            return  # Ignore duplicate triggers
-
-        # 🔓 Set new cooldown
-        command_locks[user_id] = now
-
+@bot.command(name="leaderboard")
+async def leaderboard(ctx):
+    try:
+        print(f"🏆 Leaderboard command triggered by {ctx.author}")
         data = load_data()
         if not data:
             await ctx.send("🌌 No one has earned XP yet!")
@@ -211,10 +205,8 @@ async def choose_path(ctx, path: Optional[str] = None):
 
         sorted_users = sorted(
             data.items(),
-            key=lambda x: (-x[1]["level"], -x[1]["xp"])
+            key=lambda x: (-int(x[1].get("level", 0)), -int(x[1].get("xp", 0)))
         )[:10]
-        
-        print("🔍 Using level-first sorting")
 
         leaderboard_text = "🏆 **The Realm's Top Dwellers**\n"
         for i, (user_id, user_data) in enumerate(sorted_users, 1):
@@ -223,6 +215,10 @@ async def choose_path(ctx, path: Optional[str] = None):
             leaderboard_text += f"{i}. {name} — Level {user_data['level']} ({user_data['xp']} XP)\n"
 
         await ctx.send(leaderboard_text)
+
+    except Exception as e:
+        print(f"❌ Error in leaderboard command: {e}")
+        await ctx.send("⚠️ Something went wrong with the leaderboard.")
 
 @bot.command(name="realmpath")
 async def realmpath(ctx):
