@@ -13,6 +13,10 @@ from flask import Flask
 from waitress import serve
 from discord import TextChannel
 
+command_locks = {}
+COMMAND_COOLDOWN = 3  # seconds
+
+
 intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
@@ -189,26 +193,35 @@ async def choose_path(ctx, path: Optional[str] = None):
     else:
         await ctx.send(f"🌌 The {path_info['role']} role doesn't exist on this server.")
 
-@bot.command(name="leaderboard")
-async def leaderboard(ctx):
-    data = load_data()
-    if not data:
-        await ctx.send("🌌 No one has earned XP yet!")
-        return
+    @bot.command(name="leaderboard")
+    async def leaderboard(ctx):
+        now = time.time()
+        user_id = str(ctx.author.id)
 
-    sorted_users = sorted(
-        data.items(),
-        key=lambda x: (-x[1]["level"], -x[1]["xp"])
-    )[:10]
+        # 🔐 Check if user is on cooldown
+        if user_id in command_locks and now - command_locks[user_id] < COMMAND_COOLDOWN:
+            return  # Ignore duplicate triggers
 
-    leaderboard_text = "🏆 **The Realm's Top Dwellers**\n"
-    for i, (user_id, user_data) in enumerate(sorted_users, 1):
-        member = ctx.guild.get_member(int(user_id))
-        name = member.display_name if member else f"User {user_id}"
-        leaderboard_text += f"{i}. {name} — Level {user_data['level']} ({user_data['xp']} XP)\n"
+        # 🔓 Set new cooldown
+        command_locks[user_id] = now
 
-    await ctx.send(leaderboard_text)
+        data = load_data()
+        if not data:
+            await ctx.send("🌌 No one has earned XP yet!")
+            return
 
+        sorted_users = sorted(
+            data.items(),
+            key=lambda x: (-x[1]["level"], -x[1]["xp"])
+        )[:10]
+
+        leaderboard_text = "🏆 **The Realm's Top Dwellers**\n"
+        for i, (user_id, user_data) in enumerate(sorted_users, 1):
+            member = ctx.guild.get_member(int(user_id))
+            name = member.display_name if member else f"User {user_id}"
+            leaderboard_text += f"{i}. {name} — Level {user_data['level']} ({user_data['xp']} XP)\n"
+
+        await ctx.send(leaderboard_text)
 
 @bot.command(name="realmpath")
 async def realmpath(ctx):
