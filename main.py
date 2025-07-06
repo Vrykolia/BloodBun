@@ -13,8 +13,6 @@ from flask import Flask
 from waitress import serve
 from discord import TextChannel
 
-print("🧪 BloodBun main.py has started")
-
 command_locks = {}
 COMMAND_COOLDOWN = 3  # seconds
 
@@ -196,7 +194,6 @@ async def choose_path(ctx, path: Optional[str] = None):
 
 @bot.command(name="leaderboard")
 async def leaderboard(ctx):
-    try:
         print(f"🏆 Leaderboard command triggered by {ctx.author}")
         data = load_data()
         if not data:
@@ -215,10 +212,6 @@ async def leaderboard(ctx):
             leaderboard_text += f"{i}. {name} — Level {user_data['level']} ({user_data['xp']} XP)\n"
 
         await ctx.send(leaderboard_text)
-
-    except Exception as e:
-        print(f"❌ Error in leaderboard command: {e}")
-        await ctx.send("⚠️ Something went wrong with the leaderboard.")
 
 @bot.command(name="realmpath")
 async def realmpath(ctx):
