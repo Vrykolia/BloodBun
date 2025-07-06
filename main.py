@@ -182,7 +182,20 @@ async def on_message(message):
             user_roles = [role.name for role in message.author.roles]
             for path_key, path_data in path_roles.items():
                 if path_data["role"] in user_roles:
-                    lore_message = path_lore.get(path_key,
+                    lore_message = path_lore.get(path_key, {}).get(new_level, "")
+                    if lore_message:
+                        await message.channel.send(f"{message.author.mention} {lore_message}")
+                    break
+
+        if new_level == 100:
+            role = discord.utils.get(message.guild.roles, name=final_role)
+            if role:
+                await message.author.add_roles(role)
+                await message.channel.send(f"{message.author.mention} {final_message}")
+
+    save_data(data)
+    await bot.process_commands(message)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -191,14 +204,6 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     logger.error("DISCORD_TOKEN environment variable not found!")
     exit(1)
-
-intents = discord.Intents.default()
-intents.messages = True
-intents.guilds = True
-intents.members = True
-intents.message_content = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
 
 haunted_users = {}
 collected_whispers = {}
