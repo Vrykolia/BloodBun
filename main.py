@@ -580,5 +580,6 @@ if not TOKEN:
     print("❌ DISCORD_TOKEN not found in environment!")
     exit(1)
 
-keep_alive()
-bot.run(TOKEN.strip())
+if __name__ == "__main__":
+    keep_alive()  # Starts the Flask server in a separate thread
+    bot.run(TOKEN)  # Starts the Discord bot
