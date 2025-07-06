@@ -1,0 +1,11 @@
+services:
+- type: web
+  name: bloodbun
+  runtime: python
+  repo: https://github.com/Vrykolia/BloodBun
+  branch: main
+  buildCommand: pip install -r requirements.txt
+  startCommand: python main.py
+  envVars:
+    - key: DISCORD_TOKEN
+      sync: false

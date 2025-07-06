@@ -7,6 +7,8 @@ import logging
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from flask import Flask
+from threading import Thread
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -59,6 +61,20 @@ bloodbun_qotd_responses = {
     "What treat would you offer a ghost": "🍪 One (1) perfectly salted cookie. Still warm. Bribes matter."
 }
 
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "BloodBun is lurking..."
+
+def run():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+    
 async def safe_send_message(destination, content):
     """Safely send a message with error handling"""
     try:
@@ -416,7 +432,7 @@ async def on_message(message):
 
         # Random chatter
         if not message.author.bot:
-            if random.randint(1, 75) == 1:  # Adjust the number for frequency (lower = more often)
+            if random.randint(1, 50) == 1:  # Adjust the number for frequency (lower = more often)
                 random_chatter = [
                     "🩸 The air feels… thicker here.",
                     "👁️ I saw that. No, not you. The thing *behind* you.",
@@ -436,5 +452,7 @@ async def on_message(message):
         logger.error(f"Error in on_message: {e}")
 
     await bot.process_commands(message)
+
+keep_alive()
 
 bot.run(TOKEN)
