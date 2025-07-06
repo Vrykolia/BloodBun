@@ -212,8 +212,10 @@ async def choose_path(ctx, path: Optional[str] = None):
 
         sorted_users = sorted(
             data.items(),
-            key=lambda x: (-int(x[1]["level"]), -int(x[1]["xp"]))
+            key=lambda x: (-x[1]["level"], -x[1]["xp"])
         )[:10]
+        
+        print("🔍 Using level-first sorting")
 
         leaderboard_text = "🏆 **The Realm's Top Dwellers**\n"
         for i, (user_id, user_data) in enumerate(sorted_users, 1):
