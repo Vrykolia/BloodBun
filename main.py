@@ -10,8 +10,179 @@ from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 from waitress import serve
+import discord
+from discord.ext import commands
+import json
+import os
 
-# Set up logging
+intents = discord.Intents.default()
+intents.messages = True
+intents.guilds = True
+intents.members = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# XP settings
+MIN_XP = 15
+MAX_XP = 25
+XP_COOLDOWN = 60
+cooldowns = {}
+
+# Reset cooldowns
+reset_cooldowns = {}
+RESET_COOLDOWN_SECONDS = 86400  # 24 hours
+
+# XP table
+def generate_xp_table(max_level=100):
+    xp_table = {}
+    xp = 0
+    for level in range(1, max_level + 1):
+        xp += 500 if level == 1 else 499
+        xp_table[level] = xp
+    return xp_table
+
+xp_table = generate_xp_table()
+
+def get_level_from_xp(xp, xp_table):
+    level = 0
+    for lvl, required_xp in sorted(xp_table.items()):
+        if xp >= required_xp:
+            level = lvl
+        else:
+            break
+    return level
+
+# Role rewards
+level_roles = {
+    1: "Initiate",
+    5: "Nightborne",
+    10: "Veilbound"
+}
+
+level_messages = {
+    1: "🪢 **Initiate — Level 1+**\nYou have stirred the Realm. You are awakened.\n_A knot just beginning to tie — the first connection, a loose bond forming. The Realm has noticed you, and your presence begins to twist into its fabric._",
+    5: "🔗 **Nightborne — Level 5+**\nDusk knows your name. The path links you to the Realm.\n_A link forged — your presence is now a visible connection, stronger and more deliberate. You’re becoming part of the Realm’s chain, walking dusk-lit paths between shadow and light._",
+    10: "🕸️ **Veilbound — Level 10+**\nThe Realm surrounds you and within it you are bound.\n_A web of fate — your spirit is now fully enmeshed. You’re not just part of the Realm; you are woven into its design and destiny._"
+}
+
+# Path system
+path_roles = {
+    "flame": {
+        "role": "Flamebound",
+        "symbol": "🔥",
+        "message": "🔥 _You have chosen the Path of Flame._\nThe Realm stirs with heat. You are no longer a spark—you are the beginning of a blaze."
+    },
+    "ash": {
+        "role": "Ashbound",
+        "symbol": "🪶",
+        "message": "🪶 _You have chosen the Path of Ash._\nThe Realm quiets. You are the stillness that follows, the breath held before the end."
+    },
+    "echo": {
+        "role": "Echo-bound",
+        "symbol": "🌀",
+        "message": "🌀 _You have chosen the Path of Echoes._\nThe Realm ripples. You are the resonance of what was and what will be."
+    }
+}
+
+path_lore = {
+    "flame": {
+        30: "🔥 _The fire no longer burns you. It obeys you._\nYou are no longer shaped by the Realm—you shape it in return.",
+        40: "🔥 _You are the flame that devours the veil._\nThe Realm bends to your will, and the stars flicker in your wake.",
+        50: "🔥 _The flame no longer consumes. It creates._\nYou forge new realities in the Realm’s crucible.",
+        60: "🔥 _You are the forge and the fury._\nCreation and destruction are no longer opposites—they are your tools.",
+        70: "🔥 _The Realm trembles at your heat._\nEven silence cannot withstand your presence.",
+        80: "🔥 _You are the final ember and the first spark._\nTime itself ignites in your wake.",
+        90: "🔥 _You are the flame that remembers._\nThe Realm burns with your memory."
+    },
+    "ash": {
+        30: "🪶 _You are the silence after the storm._\nThe Realm no longer speaks to you—it listens.",
+        40: "🪶 _You are the last ember in a world of dust._\nThe Realm remembers you not as a traveler, but as a witness.",
+        50: "🪶 _You are the stillness that follows endings._\nThe Realm rests in your shadow, soothed by your silence.",
+        60: "🪶 _You walk where even memory fades._\nWhat you carry is not forgotten—it is preserved.",
+        70: "🪶 _Ash does not vanish. It settles._\nYou are the foundation of what will come.",
+        80: "🪶 _You are the hush before the Realm dreams._\nEven the stars dim in reverence.",
+        90: "🪶 _You are the dust of legends._\nThe Realm is built on your silence."
+    },
+    "echo": {
+        30: "🌀 _You hear what was never said._\nThe Realm hums with truths that only you can perceive.",
+        40: "🌀 _You are the echo that precedes the sound._\nThe Realm is no longer a place—it is your reflection.",
+        50: "🌀 _You echo not what was, but what will be._\nThe Realm bends around your resonance.",
+        60: "🌀 _You are the whisper in the void._\nEven silence carries your name.",
+        70: "🌀 _You are the pattern beneath the chaos._\nThe Realm dances to your unseen rhythm.",
+        80: "🌀 _You are the echo that shapes the source._\nReality follows where your voice has already been.",
+        90: "🌀 _You are the resonance of the Realm itself._\nIts pulse is your own."
+    }
+}
+
+final_role = "The Remembered"
+final_message = (
+    "🔮 **The Remembered — Level 100+**\n"
+    "You are no longer part of the Realm. You are its memory.\n"
+    "_Your presence echoes in the silence between stars. The Realm does not guide you—you are the path._"
+)
+
+# Data handling
+def load_data():
+    if not os.path.exists("users.json"):
+        return {}
+    with open("users.json", "r") as f:
+        return json.load(f)
+
+def save_data(data):
+    with open("users.json", "w") as f:
+        json.dump(data, f, indent=4)
+
+# XP tracking
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    user_id = str(message.author.id)
+    now = time.time()
+
+    if user_id in cooldowns and now - cooldowns[user_id] < XP_COOLDOWN:
+        await bot.process_commands(message)
+        return
+
+    cooldowns[user_id] = now
+
+    data = load_data()
+    if user_id not in data:
+        data[user_id] = {"xp": 0, "level": 0}
+
+    earned_xp = random.randint(MIN_XP, MAX_XP)
+    data[user_id]["xp"] += earned_xp
+
+    xp = data[user_id]["xp"]
+    level = data[user_id]["level"]
+    new_level = get_level_from_xp(xp, xp_table)
+
+    if new_level > level:
+        data[user_id]["level"] = new_level
+        await message.channel.send(f"{message.author.mention} leveled up to {new_level}! 🎉")
+
+        if new_level in level_roles:
+            role_name = level_roles[new_level]
+            role = discord.utils.get(message.guild.roles, name=role_name)
+            if role:
+                await message.author.add_roles(role)
+                msg = level_messages.get(new_level, "")
+                if msg:
+                    await message.channel.send(f"{message.author.mention} {msg}")
+
+        if new_level == 20:
+            await message.channel.send(
+                f"{message.author.mention} 🌌 You have reached Level 20.\n"
+                "The Realm opens before you. Choose your path:\n"
+                "`!choose flame` 🔥  |  `!choose ash` 🪶  |  `!choose echo` 🌀"
+            )
+
+        if new_level in [30, 40, 50, 60, 70, 80, 90]:
+            user_roles = [role.name for role in message.author.roles]
+            for path_key, path_data in path_roles.items():
+                if path_data["role"] in user_roles:
+                    lore_message = path_lore.get(path_key,
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
