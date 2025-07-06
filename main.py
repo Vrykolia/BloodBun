@@ -195,7 +195,7 @@ async def cuddle(ctx):
         "🌑 You are now in a cuddle trap. Struggle only tightens it.",
         "🩸 A snuggle aura surrounds you. There's no escape."
     ]
-    gif_url = "https://media.giphy.com/media/ugt20FJvA38QYS9RhC/giphy.gif"
+    gif_url = "https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmN0eGk5ejcwcnR4dmJyODI4cXgzMGhhcGVoc2g5b2l5bDByZXN2ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/ugt20FJvA38QYS9RhC/giphy.gif"
 
     chosen_cuddle = random.choice(cuddles)
     await safe_send_message(ctx, chosen_cuddle)
